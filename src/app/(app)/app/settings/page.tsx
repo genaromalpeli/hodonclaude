@@ -104,12 +104,12 @@ export default function SettingsPage() {
       <p className="text-text-muted text-sm mb-8">Configura tu cuenta e integraciones.</p>
 
       <form onSubmit={handleSave} className="space-y-8">
-        {/* OpenAlex API */}
+        {/* Search API */}
         <div className="bg-surface border border-border rounded-xl p-6">
-          <h2 className="font-semibold text-text mb-1">OpenAlex API Key</h2>
+          <h2 className="font-semibold text-text mb-1">API Key de búsqueda científica</h2>
           <p className="text-text-muted text-xs mb-5">
-            Desde Feb 2026, OpenAlex requiere API key. Obtén la tuya en{" "}
-            <span className="text-accent font-mono">openalex.org</span>.
+            Necesaria para buscar papers desde el buscador y el Radar.
+            Obtén la tuya de forma gratuita en el portal de acceso abierto.
           </p>
 
           {settings?.hasApiKey && (

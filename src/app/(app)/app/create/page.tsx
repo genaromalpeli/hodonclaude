@@ -1,305 +1,298 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-type Step = "type" | "configure" | "generating";
+interface Paper {
+  id: string;
+  titulo: string;
+  año?: number;
+  citas?: number;
+  autores?: Array<{ author: { display_name: string } }>;
+  abstract_inverted_index?: Record<string, number[]>;
+  concepts?: Array<{ display_name: string; score: number }>;
+}
 
-const DOMAINS = ["AI", "BIOTECH", "SPACE", "CLIMATE", "MATERIALS", "ECON", "OTHER"];
-const OBJECTIVES = [
-  { value: "EXPLORE", label: "Explorar" },
-  { value: "VALIDATE", label: "Validar" },
-  { value: "DESIGN_EXPERIMENT", label: "Diseñar experimento" },
-  { value: "FIND_PRODUCT", label: "Encontrar producto" },
-];
+function invertirAbstract(inv?: Record<string, number[]>): string {
+  if (!inv) return "";
+  const words: [string, number][] = [];
+  for (const [w, pos] of Object.entries(inv)) pos.forEach((p) => words.push([w, p]));
+  words.sort((a, b) => a[1] - b[1]);
+  const txt = words.map((w) => w[0]).join(" ");
+  return txt.slice(0, 400);
+}
 
 export default function CreatePage() {
   const router = useRouter();
-  const [step, setStep] = useState<Step>("type");
-  const [inputType, setInputType] = useState<"OPENALEX_WORK" | "QUESTION_TEXT" | "URL">("QUESTION_TEXT");
-  const [form, setForm] = useState({
-    sourceRef: "",
-    rawText: "",
-    domain: "AI",
-    objective: "EXPLORE",
-    timeWeeks: "4",
-    budgetUSD: "1000",
-    riskTolerance: "medium",
-  });
-  const [openAlexWorkData, setOpenAlexWorkData] = useState<Record<string, unknown> | null>(null);
+  const [pregunta, setPregunta] = useState("");
+  const [papers, setPapers] = useState<Paper[]>([]);
+  const [archivoPDF, setArchivoPDF] = useState<string | null>(null);
+  const [mostrarBuscador, setMostrarBuscador] = useState(false);
+  const [queryBusqueda, setQueryBusqueda] = useState("");
+  const [resultados, setResultados] = useState<Paper[]>([]);
+  const [buscando, setBuscando] = useState(false);
+  const [generando, setGenerando] = useState(false);
   const [error, setError] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<unknown[]>([]);
-  const [searching, setSearching] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  async function searchOpenAlex() {
-    if (!searchQuery.trim()) return;
-    setSearching(true);
+  async function buscarPapers() {
+    if (!queryBusqueda.trim()) return;
+    setBuscando(true);
     try {
-      const res = await fetch(`/api/openalex/works?search=${encodeURIComponent(searchQuery)}&per_page=5`);
-      if (res.ok) {
-        const data = await res.json() as { results?: unknown[] };
-        setSearchResults(data.results || []);
-      }
+      const res = await fetch(
+        `/api/openalex/works?search=${encodeURIComponent(queryBusqueda)}&per_page=8`
+      );
+      const data = await res.json() as { results?: Paper[]; error?: string };
+      if (data.error) setError(data.error);
+      else setResultados((data.results || []).map((r) => ({ ...r, titulo: r.titulo || (r as Record<string, unknown>).title as string })));
     } catch {
-      // ignore
+      setError("Error en la búsqueda.");
     } finally {
-      setSearching(false);
+      setBuscando(false);
     }
   }
 
-  function selectWork(work: Record<string, unknown>) {
-    setForm((f) => ({ ...f, sourceRef: work.id as string }));
-    setOpenAlexWorkData(work);
-    setInputType("OPENALEX_WORK");
+  function agregarPaper(paper: Paper) {
+    const raw = paper as unknown as Record<string, unknown>;
+    const p: Paper = {
+      id: String(raw.id || paper.id),
+      titulo: String(raw.title || paper.titulo || "Sin título"),
+      año: raw.publication_year as number | undefined,
+      citas: raw.cited_by_count as number | undefined,
+      autores: raw.authorships as Paper["autores"],
+      abstract_inverted_index: raw.abstract_inverted_index as Paper["abstract_inverted_index"],
+      concepts: raw.concepts as Paper["concepts"],
+    };
+    if (!papers.find((x) => x.id === p.id)) {
+      setPapers((prev) => [...prev, p]);
+    }
+    setMostrarBuscador(false);
+    setResultados([]);
+    setQueryBusqueda("");
   }
 
-  async function handleGenerate() {
-    setStep("generating");
+  function quitarPaper(id: string) {
+    setPapers((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  function handlePDF(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) setArchivoPDF(file.name);
+  }
+
+  async function handleGenerar() {
+    if (!pregunta.trim() && papers.length === 0 && !archivoPDF) return;
+    setGenerando(true);
     setError("");
 
     try {
-      // 1. Create input
+      const sourceRef = papers[0]?.id || archivoPDF || pregunta.slice(0, 100);
+      const tipo = papers.length > 0 ? "OPENALEX_WORK" : archivoPDF ? "PDF_UPLOAD" : "QUESTION_TEXT";
+
       const inputRes = await fetch("/api/inputs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: inputType,
-          sourceRef: form.sourceRef || form.rawText.slice(0, 100),
-          rawText: inputType === "QUESTION_TEXT" ? form.rawText : undefined,
-          domain: form.domain,
-          objective: form.objective,
-          constraintsJson: {
-            timeWeeks: parseInt(form.timeWeeks),
-            budgetUSD: parseInt(form.budgetUSD),
-            riskTolerance: form.riskTolerance,
-          },
+          type: tipo,
+          sourceRef,
+          rawText: pregunta || undefined,
+          domain: "OTHER",
+          objective: "EXPLORE",
         }),
       });
 
-      if (!inputRes.ok) {
-        const d = await inputRes.json() as { error?: string };
-        throw new Error(d.error || "Error al crear input.");
-      }
-
+      if (!inputRes.ok) throw new Error("Error creando el input.");
       const { input } = await inputRes.json() as { input: { id: string } };
 
-      // 2. Generate output
+      const papersPayload = papers.map((p) => ({
+        id: p.id,
+        titulo: p.titulo,
+        abstract: invertirAbstract(p.abstract_inverted_index),
+        conceptos: p.concepts,
+        citas: p.citas,
+        año: p.año,
+        autores: (p.autores || []).map((a) => a.author.display_name),
+      }));
+
       const outputRes = await fetch("/api/outputs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inputId: input.id,
-          openAlexWorkData: openAlexWorkData || undefined,
-        }),
+        body: JSON.stringify({ inputId: input.id, papersAdjuntos: papersPayload }),
       });
 
-      if (!outputRes.ok) {
-        const d = await outputRes.json() as { error?: string };
-        throw new Error(d.error || "Error al generar output.");
-      }
-
+      if (!outputRes.ok) throw new Error("Error generando el análisis.");
       const { output } = await outputRes.json() as { output: { id: string } };
       router.push(`/app/outputs/${output.id}`);
-    } catch (err: unknown) {
+    } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido.");
-      setStep("configure");
+      setGenerando(false);
     }
   }
 
-  if (step === "generating") {
+  const puedeGenerar = pregunta.trim().length > 0 || papers.length > 0 || !!archivoPDF;
+
+  if (generando) {
     return (
-      <div className="max-w-xl mx-auto flex flex-col items-center justify-center min-h-96">
-        <div className="w-12 h-12 border-2 border-accent border-t-transparent rounded-full animate-spin mb-6"></div>
-        <h2 className="text-lg font-semibold mb-2">Generando análisis Hodon...</h2>
-        <p className="text-text-muted text-sm text-center">
-          Procesando input, generando cuadrantes, red team y plan de experimentos.
-        </p>
+      <div className="h-full flex flex-col items-center justify-center gap-6">
+        <div className="w-12 h-12 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        <div className="text-center">
+          <p className="text-text font-semibold text-lg mb-1">Analizando...</p>
+          <p className="text-text-muted text-sm">
+            Generando mapa epistémico, cuadrantes, red team y referencias.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-1">Nuevo análisis</h1>
-      <p className="text-text-muted text-sm mb-8">
-        Define el input y genera un output Hodon completo.
-      </p>
+    <div className="max-w-2xl mx-auto py-8 px-4">
+      {/* Header */}
+      <div className="mb-10">
+        <h1 className="text-3xl font-bold text-text mb-2">Nueva investigación</h1>
+        <p className="text-text-muted text-sm">
+          Escribe tu pregunta o hipótesis. Adjunta papers si los tienes.
+        </p>
+      </div>
 
-      {/* Step 1: Input type */}
-      <div className="mb-8">
-        <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider mb-4">
-          1. Tipo de input
-        </h2>
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { type: "QUESTION_TEXT" as const, label: "Pregunta / Texto", icon: "💬" },
-            { type: "OPENALEX_WORK" as const, label: "Paper OpenAlex", icon: "📄" },
-            { type: "URL" as const, label: "URL", icon: "🔗" },
-          ].map((t) => (
-            <button
-              key={t.type}
-              onClick={() => setInputType(t.type)}
-              className={`p-4 rounded-xl border text-sm font-medium transition-colors text-left ${
-                inputType === t.type
-                  ? "border-accent bg-accent/10 text-accent"
-                  : "border-border bg-surface text-text-muted hover:text-text hover:border-border-2"
-              }`}
+      {/* Textarea principal */}
+      <div className="mb-6">
+        <textarea
+          value={pregunta}
+          onChange={(e) => setPregunta(e.target.value)}
+          placeholder="¿Cuál es tu pregunta de investigación o hipótesis? Por ejemplo: ¿Qué mecanismos determinan la plasticidad sináptica en condiciones de privación de sueño crónica?"
+          rows={6}
+          className="w-full bg-surface border border-border rounded-xl px-5 py-4 text-text text-base placeholder:text-text-muted focus:border-accent focus:outline-none resize-none leading-relaxed"
+          autoFocus
+        />
+        <div className="flex justify-end mt-1">
+          <span className="text-xs text-text-muted">{pregunta.length} caracteres</span>
+        </div>
+      </div>
+
+      {/* Papers adjuntos */}
+      {papers.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {papers.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-center gap-2 bg-accent/10 border border-accent/30 rounded-lg px-3 py-1.5 text-xs"
             >
-              <div className="text-2xl mb-2">{t.icon}</div>
-              {t.label}
-            </button>
+              <span className="text-accent-glow font-medium max-w-48 truncate">{p.titulo}</span>
+              {p.año && <span className="text-text-muted">{p.año}</span>}
+              <button
+                onClick={() => quitarPaper(p.id)}
+                className="text-text-muted hover:text-danger ml-1"
+              >
+                ×
+              </button>
+            </div>
           ))}
         </div>
-      </div>
+      )}
 
-      {/* Step 2: Input content */}
-      <div className="mb-8">
-        <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider mb-4">
-          2. Contenido
-        </h2>
-
-        {inputType === "QUESTION_TEXT" && (
-          <textarea
-            value={form.rawText}
-            onChange={(e) => setForm((f) => ({ ...f, rawText: e.target.value }))}
-            rows={5}
-            placeholder="¿Cuál es tu hipótesis, pregunta de investigación, o tema a explorar?"
-            className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-text placeholder:text-text-muted focus:border-accent focus:outline-none text-sm resize-none"
-          />
-        )}
-
-        {inputType === "URL" && (
-          <input
-            type="url"
-            value={form.sourceRef}
-            onChange={(e) => setForm((f) => ({ ...f, sourceRef: e.target.value }))}
-            placeholder="https://arxiv.org/abs/..."
-            className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-text placeholder:text-text-muted focus:border-accent focus:outline-none text-sm"
-          />
-        )}
-
-        {inputType === "OPENALEX_WORK" && (
-          <div className="space-y-4">
-            {openAlexWorkData ? (
-              <div className="p-4 bg-accent/5 border border-accent/30 rounded-xl">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-medium text-text text-sm">
-                      {String((openAlexWorkData as Record<string, unknown>).title || "Work seleccionado")}
-                    </div>
-                    <div className="text-xs text-text-muted mt-1 font-mono">
-                      {String((openAlexWorkData as Record<string, unknown>).id || "")}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => { setOpenAlexWorkData(null); setForm((f) => ({ ...f, sourceRef: "" })); }}
-                    className="text-xs text-text-muted hover:text-danger"
-                  >
-                    Cambiar
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && searchOpenAlex()}
-                    placeholder="Buscar paper en OpenAlex..."
-                    className="flex-1 bg-surface border border-border rounded-lg px-4 py-2.5 text-text placeholder:text-text-muted focus:border-accent focus:outline-none text-sm"
-                  />
-                  <button
-                    onClick={searchOpenAlex}
-                    disabled={searching}
-                    className="bg-accent hover:bg-accent-dim disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    {searching ? "..." : "Buscar"}
-                  </button>
-                </div>
-
-                {searchResults.length > 0 && (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {(searchResults as Record<string, unknown>[]).map((work) => (
-                      <button
-                        key={String(work.id)}
-                        onClick={() => selectWork(work)}
-                        className="w-full text-left p-3 bg-surface hover:bg-surface-2 border border-border rounded-lg transition-colors"
-                      >
-                        <div className="text-sm font-medium text-text line-clamp-2">
-                          {String(work.title || "Sin título")}
-                        </div>
-                        <div className="text-xs text-text-muted mt-1">
-                          {String(work.publication_year || "")} · {(work.cited_by_count as number | undefined) || 0} citas
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                <p className="text-xs text-text-muted">
-                  Nota: Requiere API key de OpenAlex configurada en Ajustes.
-                </p>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Step 3: Config */}
-      <div className="mb-8">
-        <h2 className="text-sm font-semibold text-text-dim uppercase tracking-wider mb-4">
-          3. Configuración
-        </h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-text-muted mb-1.5">Dominio</label>
-            <select
-              value={form.domain}
-              onChange={(e) => setForm((f) => ({ ...f, domain: e.target.value }))}
-              className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none text-sm"
-            >
-              {DOMAINS.map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted mb-1.5">Objetivo</label>
-            <select
-              value={form.objective}
-              onChange={(e) => setForm((f) => ({ ...f, objective: e.target.value }))}
-              className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none text-sm"
-            >
-              {OBJECTIVES.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted mb-1.5">Horizonte (semanas)</label>
-            <input
-              type="number"
-              value={form.timeWeeks}
-              onChange={(e) => setForm((f) => ({ ...f, timeWeeks: e.target.value }))}
-              min="1"
-              className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted mb-1.5">Presupuesto (USD)</label>
-            <input
-              type="number"
-              value={form.budgetUSD}
-              onChange={(e) => setForm((f) => ({ ...f, budgetUSD: e.target.value }))}
-              min="0"
-              className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none text-sm"
-            />
-          </div>
+      {/* PDF adjunto */}
+      {archivoPDF && (
+        <div className="mb-4 flex items-center gap-2 bg-surface border border-border rounded-lg px-3 py-2 text-xs w-fit">
+          <span className="text-text-muted">📄</span>
+          <span className="text-text-dim">{archivoPDF}</span>
+          <button onClick={() => setArchivoPDF(null)} className="text-text-muted hover:text-danger">×</button>
         </div>
+      )}
+
+      {/* Acciones secundarias */}
+      <div className="flex items-center gap-3 mb-8">
+        <button
+          onClick={() => setMostrarBuscador(!mostrarBuscador)}
+          className={`flex items-center gap-2 text-sm border rounded-lg px-4 py-2 transition-colors ${
+            mostrarBuscador
+              ? "border-accent text-accent bg-accent/5"
+              : "border-border text-text-muted hover:text-text hover:border-border-2"
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          Buscar papers
+        </button>
+        <button
+          onClick={() => fileRef.current?.click()}
+          className="flex items-center gap-2 text-sm border border-border text-text-muted hover:text-text hover:border-border-2 rounded-lg px-4 py-2 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+          </svg>
+          Adjuntar PDF
+        </button>
+        <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={handlePDF} />
       </div>
+
+      {/* Panel de búsqueda */}
+      {mostrarBuscador && (
+        <div className="mb-6 bg-surface border border-accent/20 rounded-xl p-4">
+          <div className="flex gap-2 mb-4">
+            <input
+              type="text"
+              value={queryBusqueda}
+              onChange={(e) => setQueryBusqueda(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && buscarPapers()}
+              placeholder="Buscar investigaciones científicas..."
+              className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-text text-sm placeholder:text-text-muted focus:border-accent focus:outline-none"
+              autoFocus
+            />
+            <button
+              onClick={buscarPapers}
+              disabled={buscando || !queryBusqueda.trim()}
+              className="bg-accent hover:bg-accent-dim disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              {buscando ? "..." : "Buscar"}
+            </button>
+          </div>
+
+          {resultados.length > 0 && (
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {(resultados as unknown as Record<string, unknown>[]).map((r) => {
+                const titulo = String(r.title || r.titulo || "Sin título");
+                const id = String(r.id || "");
+                const año = r.publication_year as number | undefined;
+                const citas = r.cited_by_count as number | undefined;
+                const yaAgregado = papers.some((p) => p.id === id);
+                return (
+                  <div
+                    key={id}
+                    className="flex items-start justify-between gap-3 p-3 bg-background rounded-lg"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-text text-xs font-medium leading-snug line-clamp-2">{titulo}</p>
+                      <p className="text-text-muted text-xs mt-0.5">
+                        {año && <span>{año} · </span>}
+                        {citas !== undefined && <span>{citas} citas</span>}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => agregarPaper(r as unknown as Paper)}
+                      disabled={yaAgregado}
+                      className={`shrink-0 text-xs px-2.5 py-1 rounded-md transition-colors ${
+                        yaAgregado
+                          ? "text-success border border-success/30"
+                          : "bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20"
+                      }`}
+                    >
+                      {yaAgregado ? "Agregado" : "Agregar"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {!buscando && resultados.length === 0 && queryBusqueda && (
+            <p className="text-text-muted text-xs text-center py-4">
+              Sin resultados. Verifica tu API key de búsqueda en Ajustes.
+            </p>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 p-3 bg-danger/10 border border-danger/30 rounded-lg text-danger text-sm">
@@ -307,17 +300,18 @@ export default function CreatePage() {
         </div>
       )}
 
+      {/* CTA */}
       <button
-        onClick={handleGenerate}
-        disabled={
-          (inputType === "QUESTION_TEXT" && !form.rawText.trim()) ||
-          (inputType === "OPENALEX_WORK" && !form.sourceRef) ||
-          (inputType === "URL" && !form.sourceRef.trim())
-        }
-        className="w-full bg-accent hover:bg-accent-dim disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors"
+        onClick={handleGenerar}
+        disabled={!puedeGenerar}
+        className="w-full bg-accent hover:bg-accent-dim disabled:opacity-30 disabled:cursor-not-allowed text-white font-semibold py-4 rounded-xl transition-colors text-base"
       >
-        Generar análisis Hodon
+        Generar análisis →
       </button>
+
+      <p className="text-center text-xs text-text-muted mt-3">
+        Hodon generará un mapa epistémico completo con 11 piezas de análisis.
+      </p>
     </div>
   );
 }

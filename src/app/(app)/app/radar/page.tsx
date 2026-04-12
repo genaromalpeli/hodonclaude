@@ -157,7 +157,7 @@ export default function RadarPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Radar OpenAlex</h1>
+        <h1 className="text-2xl font-bold">Radar científico</h1>
         <p className="text-text-muted text-sm mt-1">
           Busca papers y conceptos. Importa a Hodon con un clic.
         </p>
@@ -332,7 +332,7 @@ export default function RadarPage() {
           {!loading && !query && (
             <div className="text-center py-16 text-text-muted">
               <div className="text-4xl mb-4">📡</div>
-              <p className="text-sm">Escribe una búsqueda para explorar OpenAlex.</p>
+              <p className="text-sm">Escribe una búsqueda para explorar la literatura científica.</p>
               <p className="text-xs mt-2">
                 250M+ papers indexados. Requiere API key configurada.
               </p>
