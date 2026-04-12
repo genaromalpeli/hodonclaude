@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  FOUNDER
+  PM
+  RESEARCHER
+  OTHER
+}
+
+enum InputType {
+  OPENALEX_WORK
+  PDF_UPLOAD
+  URL
+  QUESTION_TEXT
+}
+
+enum Domain {
+  AI
+  BIOTECH
+  SPACE
+  CLIMATE
+  MATERIALS
+  ECON
+  OTHER
+}
+
+enum Objective {
+  EXPLORE
+  VALIDATE
+  DESIGN_EXPERIMENT
+  FIND_PRODUCT
+}
+
+enum ExperimentLevel {
+  H48
+  W2_4
+  W8_12
+}
+
+enum ExperimentStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+enum ExperimentOutcome {
+  SUCCESS
+  FAIL
+  INCONCLUSIVE
+  NONE
+}
+
+enum ExportPreference {
+  MD
+  PDF
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         UserRole  @default(OTHER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  inputs        Input[]
+  outputs       Output[]
+  savedSearches SavedSearch[]
+  settings      UserSettings?
+  passwordResets PasswordReset[]
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AccessRequest {
+  id        String   @id @default(cuid())
+  email     String
+  role      String
+  reason    String
+  createdAt DateTime @default(now())
+}
+
+model Input {
+  id             String    @id @default(cuid())
+  userId         String
+  type           InputType
+  sourceRef      String
+  rawText        String?
+  domain         Domain    @default(OTHER)
+  objective      Objective @default(EXPLORE)
+  constraintsJson Json?
+  createdAt      DateTime  @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outputs Output[]
+}
+
+model Output {
+  id           String   @id @default(cuid())
+  userId       String
+  inputId      String
+  title        String
+  sectionsJson Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  input       Input        @relation(fields: [inputId], references: [id], onDelete: Cascade)
+  experiments Experiment[]
+  feedback    Feedback[]
+}
+
+model Experiment {
+  id           String            @id @default(cuid())
+  outputId     String
+  level        ExperimentLevel
+  title        String
+  metricSuccess String
+  status       ExperimentStatus  @default(PENDING)
+  outcome      ExperimentOutcome @default(NONE)
+  learning     String?
+  nextStep     String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  output Output @relation(fields: [outputId], references: [id], onDelete: Cascade)
+}
+
+model Feedback {
+  id              String   @id @default(cuid())
+  outputId        String
+  sectionKey      String
+  rating          Int
+  missingEvidence String?
+  createdAt       DateTime @default(now())
+
+  output Output @relation(fields: [outputId], references: [id], onDelete: Cascade)
+}
+
+model SavedSearch {
+  id          String   @id @default(cuid())
+  userId      String
+  query       String
+  filtersJson Json?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserSettings {
+  id                String           @id @default(cuid())
+  userId            String           @unique
+  openAlexApiKey    String?
+  exportPreference  ExportPreference @default(MD)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
