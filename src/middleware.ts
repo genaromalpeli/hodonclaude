@@ -6,13 +6,12 @@ const secret = new TextEncoder().encode(
 );
 
 const PROTECTED_PATHS = ["/app"];
-const AUTH_PATHS = ["/login", "/register", "/forgot-password", "/reset-password"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isProtected = PROTECTED_PATHS.some((p) => pathname.startsWith(p));
-  const isAuthPath = AUTH_PATHS.some((p) => pathname.startsWith(p));
+  if (!isProtected) return NextResponse.next();
 
   const token = request.cookies.get("hodon-session")?.value;
 
@@ -26,19 +25,16 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (isProtected && !isAuthenticated) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  if (isAuthPath && isAuthenticated) {
-    return NextResponse.redirect(new URL("/app", request.url));
+  if (!isAuthenticated) {
+    // Auto-login as guest — no login page friction
+    const guestUrl = new URL("/api/auth/guest", request.url);
+    guestUrl.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(guestUrl);
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/login", "/register", "/forgot-password", "/reset-password"],
+  matcher: ["/app/:path*"],
 };
