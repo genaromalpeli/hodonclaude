@@ -1,8 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ["bcryptjs"],
-  },
+  // bcryptjs uses native Node.js crypto — must run in Node.js runtime, not Edge
+  serverExternalPackages: ["bcryptjs"],
 };
 
 export default nextConfig;
