@@ -44,7 +44,7 @@ export default function CreatePage() {
       );
       const data = await res.json() as { results?: Paper[]; error?: string };
       if (data.error) setError(data.error);
-      else setResultados((data.results || []).map((r) => ({ ...r, titulo: r.titulo || (r as Record<string, unknown>).title as string })));
+      else setResultados((data.results || []).map((r) => ({ ...r, titulo: r.titulo || (r as unknown as Record<string, unknown>).title as string })));
     } catch {
       setError("Error en la búsqueda.");
     } finally {
