@@ -19,9 +19,20 @@ function setCache(key: string, data: unknown): void {
   cache.set(key, { data, expiresAt: Date.now() + 5 * 60 * 1000 });
 }
 
+/**
+ * Priority order for OpenAlex API key:
+ * 1. User's saved key in UserSettings (configured via /app/settings)
+ * 2. OPENALEX_API_KEY environment variable (set in Vercel dashboard)
+ */
 export async function getOpenAlexApiKey(userId: string): Promise<string | null> {
-  const settings = await prisma.userSettings.findUnique({ where: { userId } });
-  return settings?.openAlexApiKey || null;
+  try {
+    const settings = await prisma.userSettings.findUnique({ where: { userId } });
+    if (settings?.openAlexApiKey) return settings.openAlexApiKey;
+  } catch {
+    // DB might not be available during build
+  }
+  // Fallback to environment variable — set this in Vercel dashboard
+  return process.env.OPENALEX_API_KEY || null;
 }
 
 export async function openAlexRequest(
@@ -48,6 +59,11 @@ export async function openAlexRequest(
 
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 403 && !apiKey) {
+      throw new Error(
+        "OpenAlex requiere API key. Configúrala en Ajustes o agrega OPENALEX_API_KEY como variable de entorno en Vercel."
+      );
+    }
     throw new Error(`OpenAlex API error ${res.status}: ${text}`);
   }
 

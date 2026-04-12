@@ -36,16 +36,10 @@ export default function LandingPage() {
           </span>
           <div className="flex items-center gap-4">
             <Link
-              href="/login"
-              className="text-sm text-text-muted hover:text-text transition-colors"
+              href="/app"
+              className="text-sm bg-accent hover:bg-accent-dim text-white px-5 py-1.5 rounded-md transition-colors font-semibold"
             >
-              Ingresar
-            </Link>
-            <Link
-              href="/register"
-              className="text-sm bg-accent hover:bg-accent-dim text-white px-4 py-1.5 rounded-md transition-colors font-medium"
-            >
-              Registrarse
+              Empezar →
             </Link>
           </div>
         </div>
@@ -69,10 +63,10 @@ export default function LandingPage() {
         </p>
         <div className="flex flex-col sm:flex-row gap-4">
           <Link
-            href="/register"
+            href="/app"
             className="inline-flex items-center justify-center bg-accent hover:bg-accent-dim text-white font-semibold px-8 py-3 rounded-lg transition-colors text-base"
           >
-            Empezar gratis
+            Empezar →
           </Link>
           <a
             href="#como-funciona"
@@ -289,14 +283,14 @@ export default function LandingPage() {
             ¿Listo para operar la frontera?
           </h2>
           <p className="text-text-muted mb-10">
-            Crea tu cuenta ahora o solicita acceso anticipado.
+            Sin registro. Entra directamente y empieza a operar.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
             <Link
-              href="/register"
-              className="inline-flex items-center justify-center bg-accent hover:bg-accent-dim text-white font-semibold px-8 py-3 rounded-lg transition-colors"
+              href="/app"
+              className="inline-flex items-center justify-center bg-accent hover:bg-accent-dim text-white font-semibold px-8 py-3 rounded-lg transition-colors text-lg"
             >
-              Crear cuenta gratis
+              Empezar →
             </Link>
           </div>
 
@@ -366,11 +360,8 @@ export default function LandingPage() {
             La frontera del conocimiento no se contempla. Se opera.
           </p>
           <div className="flex gap-6 text-sm text-text-muted">
-            <Link href="/login" className="hover:text-text transition-colors">
-              Login
-            </Link>
-            <Link href="/register" className="hover:text-text transition-colors">
-              Registro
+            <Link href="/app" className="hover:text-accent transition-colors font-medium">
+              Empezar →
             </Link>
           </div>
         </div>
