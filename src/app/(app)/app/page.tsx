@@ -21,6 +21,7 @@ export default function DashboardPage() {
   const [title, setTitle] = useState("");
   const [seedQ, setSeedQ] = useState("");
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetch("/api/projects")
@@ -32,6 +33,7 @@ export default function DashboardPage() {
   async function handleCreate() {
     if (!title.trim() || !seedQ.trim()) return;
     setCreating(true);
+    setError("");
     try {
       const res = await fetch("/api/projects", {
         method: "POST",
@@ -41,8 +43,13 @@ export default function DashboardPage() {
       if (res.ok) {
         const { project } = await res.json() as { project: { id: string } };
         router.push(`/app/projects/${project.id}`);
+      } else {
+        const data = await res.json().catch(() => ({ error: "Error del servidor" }));
+        setError(data.error || `Error ${res.status}`);
+        setCreating(false);
       }
-    } finally {
+    } catch {
+      setError("Error de conexión. Intenta de nuevo.");
       setCreating(false);
     }
   }
@@ -141,9 +148,15 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {error && (
+              <div className="mt-4 p-3 bg-danger/10 border border-danger/30 rounded-lg text-danger text-sm">
+                {error}
+              </div>
+            )}
+
             <div className="flex justify-end gap-3 mt-6">
               <button
-                onClick={() => { setShowModal(false); setTitle(""); setSeedQ(""); }}
+                onClick={() => { setShowModal(false); setTitle(""); setSeedQ(""); setError(""); }}
                 className="text-sm text-text-muted hover:text-text px-4 py-2 transition-colors"
               >
                 Cancelar
