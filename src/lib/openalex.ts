@@ -47,6 +47,8 @@ export async function openAlexRequest(
   if (apiKey) {
     url.searchParams.set("api_key", apiKey);
   }
+  // Always identify via mailto for polite pool (better rate limits)
+  url.searchParams.set("mailto", "hodon@hodon.app");
 
   const cacheKey = url.toString();
   const cached = getCached(cacheKey);

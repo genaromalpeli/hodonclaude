@@ -15,7 +15,10 @@
     "db:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.88.0",
     "@prisma/client": "^5.11.0",
+    "@xyflow/react": "^12.10.2",
+    "ai": "^6.0.159",
     "bcryptjs": "^2.4.3",
     "jose": "^5.2.4",
     "next": "14.2.3",
